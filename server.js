@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const { Pool, types } = require('pg');
+const { Pool, Client, types } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
 
 const PORT = process.env.PORT || 3000;
@@ -31,13 +31,51 @@ function connectionString(raw) {
   }
 }
 
-const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: connectionString(process.env.DATABASE_URL),
-      ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
-      max: 5,
-    })
-  : null;
+const SSL = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || '') ? false : { rejectUnauthorized: false };
+const POOLER_REGIONS = [
+  'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-central-2', 'eu-north-1',
+  'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1', 'sa-east-1',
+  'ap-south-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2',
+];
+
+// Supabase's "Direct connection" host (db.<ref>.supabase.co) is IPv6-only, which Vercel can't reach.
+// If that's what was configured, find the project's IPv4 transaction pooler and use it instead.
+async function resolveDatabaseUrl(raw) {
+  const url = new URL(connectionString(raw));
+  const ref = url.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/)?.[1];
+  if (!ref) return url.toString();
+
+  const user = `postgres.${ref}`;
+  const password = decodeURIComponent(url.password);
+  const hosts = POOLER_REGIONS.flatMap(r => [`aws-0-${r}`, `aws-1-${r}`]).map(h => `${h}.pooler.supabase.com`);
+  const attempts = hosts.map(async host => {
+    const client = new Client({ host, port: 6543, user, password, database: 'postgres', ssl: SSL, connectionTimeoutMillis: 8000 });
+    try {
+      await client.connect();
+      return host;
+    } catch (err) {
+      // Wrong region answers "tenant/user not found"; anything else (e.g. bad password) means we found the project
+      if (/tenant|not found/i.test(err.message)) throw err;
+      throw Object.assign(new Error(`${host}: ${err.message}`), { found: true });
+    } finally {
+      client.end().catch(() => {});
+    }
+  });
+  let host;
+  try {
+    host = await Promise.any(attempts);
+  } catch (agg) {
+    const found = agg.errors.find(e => e.found);
+    throw new Error(found ? found.message : `No Supabase pooler found for project ${ref}. Use the "Transaction pooler" connection string.`);
+  }
+  console.log(`DATABASE_URL uses the direct host; connecting through ${host} instead`);
+  const pooled = new URL(`postgresql://${host}:6543/postgres`);
+  pooled.username = encodeURIComponent(user);
+  pooled.password = url.password;
+  return pooled.toString();
+}
+
+let pool = null;
 
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -101,6 +139,7 @@ const SCHEMA = `
 let setupPromise = null;
 function ensureSetup() {
   setupPromise ??= (async () => {
+    pool ??= new Pool({ connectionString: await resolveDatabaseUrl(process.env.DATABASE_URL), ssl: SSL, max: 5 });
     await pool.query(SCHEMA);
     const { error } = await supabase.storage.getBucket(BUCKET);
     if (error) {
