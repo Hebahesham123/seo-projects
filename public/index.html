@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SEO Tasks & Reports</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><path d='M7 21l6-6 4 4 8-8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+  </script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="logo"><i data-icon="trending"></i></div>
+      <div>
+        <div class="brand-name">SEO Tasks</div>
+        <div class="brand-sub">& Reports</div>
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-head">
+        <span>Projects</span>
+        <button class="icon-btn" id="newProjectBtn" title="New project" aria-label="New project"><i data-icon="plus"></i></button>
+      </div>
+      <ul id="projectList" class="project-list"></ul>
+    </div>
+
+    <div class="side-foot">
+      <div class="me">
+        <div class="avatar" id="meAvatar">?</div>
+        <input id="userName" placeholder="Your name" aria-label="Your name">
+      </div>
+      <button class="icon-btn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode"><i data-icon="moon"></i></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menu"><i data-icon="menu"></i></button>
+
+    <div id="emptyState" class="empty">
+      <div class="empty-art"><i data-icon="trending"></i></div>
+      <h2>Welcome to SEO Tasks & Reports</h2>
+      <p>Create a project for each website or client, then track its SEO tasks, comments, files and progress.</p>
+      <button class="btn primary" id="emptyNewProject"><i data-icon="plus"></i> Create your first project</button>
+    </div>
+
+    <section id="projectView" hidden>
+      <header class="page-head">
+        <div class="page-title">
+          <span class="project-swatch" id="projectSwatch"></span>
+          <div>
+            <h1 id="projectName"></h1>
+            <p id="projectDesc" class="muted"></p>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="icon-btn" id="editProjectBtn" title="Edit project" aria-label="Edit project"><i data-icon="edit"></i></button>
+          <button class="icon-btn danger" id="deleteProjectBtn" title="Delete project" aria-label="Delete project"><i data-icon="trash"></i></button>
+          <button class="btn primary" id="newTaskBtn"><i data-icon="plus"></i> New task</button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-view="board" role="tab"><i data-icon="board"></i> Board</button>
+          <button class="tab" data-view="reports" role="tab"><i data-icon="chart"></i> Reports</button>
+        </div>
+        <div class="filters" id="filters">
+          <div class="search">
+            <i data-icon="search"></i>
+            <input id="searchInput" placeholder="Search tasks, URLs, people…">
+          </div>
+          <select id="categoryFilter" aria-label="Filter by category"></select>
+          <select id="priorityFilter" aria-label="Filter by priority"></select>
+        </div>
+      </div>
+
+      <div id="board" class="board"></div>
+      <div id="reports" class="reports" hidden></div>
+    </section>
+  </main>
+</div>
+
+<!-- Project modal -->
+<dialog id="projectDialog" class="modal">
+  <form method="dialog" id="projectForm">
+    <div class="modal-head">
+      <h3 id="projectDialogTitle">New project</h3>
+      <button class="icon-btn" value="cancel" formnovalidate aria-label="Close"><i data-icon="x"></i></button>
+    </div>
+    <label class="field">Project / website name<input name="name" required placeholder="e.g. example.com"></label>
+    <label class="field">Description<textarea name="description" rows="3" placeholder="Goals, target keywords, client notes…"></textarea></label>
+    <div class="modal-foot">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="save">Save project</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- New task modal -->
+<dialog id="taskDialog" class="modal">
+  <form method="dialog" id="taskForm">
+    <div class="modal-head">
+      <h3>New task</h3>
+      <button class="icon-btn" value="cancel" formnovalidate aria-label="Close"><i data-icon="x"></i></button>
+    </div>
+    <label class="field">Title<input name="title" required placeholder="e.g. Fix broken internal links"></label>
+    <label class="field">Description<textarea name="description" rows="3"></textarea></label>
+    <div class="grid2">
+      <label class="field">Category<select name="category"></select></label>
+      <label class="field">Status<select name="status"></select></label>
+      <label class="field">Priority<select name="priority"></select></label>
+      <label class="field">Assignee<input name="assignee" placeholder="Name"></label>
+      <label class="field">Due date<input type="date" name="due_date"></label>
+      <label class="field">Target URL<input name="url" placeholder="https://…"></label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="save">Create task</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Task detail drawer -->
+<dialog id="detailDialog" class="drawer">
+  <header class="drawer-head">
+    <span class="crumb" id="dCrumb"></span>
+    <div class="row">
+      <span class="saved" id="savedHint" hidden><i data-icon="check"></i> Saved</span>
+      <button class="icon-btn danger" id="deleteTaskBtn" title="Delete task" aria-label="Delete task"><i data-icon="trash"></i></button>
+      <button class="icon-btn" id="closeDetail" title="Close" aria-label="Close"><i data-icon="x"></i></button>
+    </div>
+  </header>
+
+  <div class="drawer-body" tabindex="-1" autofocus>
+    <textarea id="dTitle" class="title-input" rows="1" aria-label="Title"></textarea>
+
+    <div class="props">
+      <div class="prop"><span class="prop-label"><i data-icon="circle"></i> Status</span><select id="dStatus"></select></div>
+      <div class="prop"><span class="prop-label"><i data-icon="tag"></i> Category</span><select id="dCategory"></select></div>
+      <div class="prop"><span class="prop-label"><i data-icon="flag"></i> Priority</span><select id="dPriority"></select></div>
+      <div class="prop"><span class="prop-label"><i data-icon="user"></i> Assignee</span><input id="dAssignee" placeholder="Unassigned"></div>
+      <div class="prop"><span class="prop-label"><i data-icon="calendar"></i> Due date</span><input type="date" id="dDue"></div>
+      <div class="prop"><span class="prop-label"><i data-icon="link"></i> Target URL</span>
+        <div class="url-field"><input id="dUrl" placeholder="https://…"><a id="dUrlOpen" target="_blank" rel="noopener" class="icon-btn" title="Open URL" hidden><i data-icon="external"></i></a></div>
+      </div>
+    </div>
+
+    <div class="section-label">Description</div>
+    <textarea id="dDesc" class="desc-input" rows="4" placeholder="Add details, steps, keywords…"></textarea>
+
+    <div class="section-label">Files & images <span class="count-badge" id="attCount">0</span></div>
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" multiple hidden>
+      <i data-icon="upload"></i>
+      <span><b>Click to upload</b> or drag and drop<br><small>Images, PDFs, docs, spreadsheets · up to 20 MB · or paste a screenshot</small></span>
+    </label>
+    <div id="attachments" class="attachments"></div>
+
+    <div class="section-label">Comments <span class="count-badge" id="commentCount">0</span></div>
+    <div id="comments" class="comments"></div>
+  </div>
+
+  <form id="commentForm" class="composer">
+    <div class="avatar" id="composerAvatar">?</div>
+    <textarea id="commentBody" rows="1" placeholder="Write a comment… (Ctrl+Enter to send)"></textarea>
+    <button class="btn primary icon-only" aria-label="Send"><i data-icon="send"></i></button>
+  </form>
+</dialog>
+
+<dialog id="lightbox" class="lightbox"><img id="lightboxImg" alt=""></dialog>
+<div id="tooltip" class="tooltip" hidden></div>
+<div id="toasts" class="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

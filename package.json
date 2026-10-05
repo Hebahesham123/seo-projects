@@ -1,0 +1,13 @@
+{
+  "name": "seo-tasks-and-reports",
+  "version": "1.0.0",
+  "description": "SEO projects, tasks, comments, files and reports",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  }
+}
