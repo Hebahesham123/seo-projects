@@ -19,6 +19,7 @@ const CATEGORIES = [
   { key: 'analytics', label: 'Analytics' },
   { key: 'other', label: 'Other' },
 ];
+const MAX_FILE_MB = 50;
 const label = (list, key) => list.find(x => x.key === key)?.label ?? key;
 
 // Swatch/avatar colors: all keep white text readable
@@ -103,8 +104,8 @@ function toast(msg, type = '') {
 }
 const fail = e => toast(e.message, 'error');
 
-// SQLite stores UTC "YYYY-MM-DD HH:MM:SS"
-const parseUtc = s => new Date(s.replace(' ', 'T') + 'Z');
+// Timestamps arrive as ISO strings; older "YYYY-MM-DD HH:MM:SS" values are UTC
+const parseUtc = s => new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s.replace(' ', 'T') + 'Z');
 function timeAgo(s) {
   const sec = (Date.now() - parseUtc(s)) / 1000;
   if (sec < 60) return 'just now';
@@ -553,14 +554,14 @@ function renderAttachments() {
   const list = state.currentTask.attachments;
   $('#attCount').textContent = list.length;
   $('#attachments').innerHTML = list.map(a => {
-    const url = `/uploads/${encodeURIComponent(a.stored_name)}`;
-    const preview = a.mime_type?.startsWith('image/')
+    const url = esc(a.url || '#');
+    const preview = a.url && a.mime_type?.startsWith('image/')
       ? `<img src="${url}" alt="${esc(a.original_name)}" data-full="${url}" loading="lazy">`
       : `<a class="file-thumb" href="${url}" target="_blank" rel="noopener">${fileBadge(a.original_name, a.mime_type)}</a>`;
     return `<div class="att">
       ${preview}
       <div class="att-actions">
-        <a href="${url}" download="${esc(a.original_name)}" title="Download" aria-label="Download">${icon('download')}</a>
+        <a href="${esc(a.download_url || '#')}" title="Download" aria-label="Download">${icon('download')}</a>
         <button class="del" data-id="${a.id}" title="Delete" aria-label="Delete">${icon('trash')}</button>
       </div>
       <div class="att-info">
@@ -596,17 +597,33 @@ async function reloadTask() {
   loadTasks();
 }
 
-async function uploadFiles(fileList) {
-  if (!fileList.length || !state.currentTask) return;
+// Files go straight from the browser to Supabase Storage via a signed upload URL,
+// then the server records them
+async function uploadOne(taskId, file) {
+  if (file.size > MAX_FILE_MB * 1024 * 1024) throw new Error(`${file.name} is larger than ${MAX_FILE_MB} MB`);
+  const meta = { name: file.name, size: file.size, type: file.type };
+  const signed = await api(`/api/tasks/${taskId}/attachments/sign`, { method: 'POST', body: meta });
   const fd = new FormData();
-  [...fileList].forEach(f => fd.append('files', f));
-  fd.append('uploaded_by', userName());
-  try {
-    toast(`Uploading ${fileList.length} file${fileList.length > 1 ? 's' : ''}…`);
-    await api(`/api/tasks/${state.currentTask.id}/attachments`, { method: 'POST', body: fd });
-    await reloadTask();
-    toast('Upload complete');
-  } catch (e) { fail(e); }
+  fd.append('cacheControl', '3600');
+  fd.append('', file);
+  const res = await fetch(signed.upload_url, { method: 'PUT', body: fd, headers: { 'x-upsert': 'false' } });
+  if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
+  await api(`/api/tasks/${taskId}/attachments`, {
+    method: 'POST', body: { ...meta, path: signed.path, uploaded_by: userName() },
+  });
+}
+
+async function uploadFiles(fileList) {
+  const files = [...fileList];
+  if (!files.length || !state.currentTask) return;
+  const taskId = state.currentTask.id;
+  toast(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}…`);
+  let ok = 0;
+  for (const file of files) {
+    try { await uploadOne(taskId, file); ok++; } catch (e) { fail(e); }
+  }
+  if (state.currentTask?.id === taskId) await reloadTask().catch(fail);
+  if (ok) toast(ok === files.length ? 'Upload complete' : `${ok} of ${files.length} files uploaded`);
 }
 
 $('#commentForm').addEventListener('submit', async e => {
